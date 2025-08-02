@@ -1,18 +1,18 @@
-use axum::{
-    Router,
-    routing::{get, post},
-};
+use crate::routes::create_routes;
 
-mod controller;
-use controller::{get_summary, new_payment, purge_payments};
+mod controllers;
+mod routes;
 
 #[tokio::main]
 async fn main() {
-    let app = Router::new()
-        .route("/payments", post(new_payment))
-        .route("/purge-payments", post(purge_payments))
-        .route("/payments-summary", get(get_summary));
+    let client = redis::Client::open("redis://localhost:6379").unwrap();
 
+    let connection = client
+        .get_multiplexed_async_connection()
+        .await
+        .expect("Falha ao conectar ao Redis");
+
+    let app = create_routes(connection);
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
