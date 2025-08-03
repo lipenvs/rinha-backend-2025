@@ -13,6 +13,6 @@ async fn main() {
         .expect("Falha ao conectar ao Redis");
 
     let app = create_routes(connection);
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:9999").await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }

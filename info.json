@@ -1,0 +1,21 @@
+{
+    "name": "Felipe de Almeida Neves",
+    "social": [
+        "https://github.com/lipenvs",
+        "https://www.linkedin.com/in/lipeneves/"
+    ],
+    "source-code-repo": "https://github.com/lipenvs/rinha-backend-2025",
+    "langs": [
+        "rust"
+    ],
+    "storages": [
+        "redis"
+    ],
+    "messaging": [],
+    "load-balancers": [
+        "nginx"
+    ],
+    "other-technologies": [
+        "axum"
+    ]
+}

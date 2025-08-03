@@ -33,19 +33,14 @@ pub struct SummaryResponse {
 }
 
 pub async fn new_payment(
-    Extension(mut connection): Extension<MultiplexedConnection>,
-    Json(mut payload): Json<Payment>,
+    Extension(mut redis): Extension<MultiplexedConnection>,
+    Json(payload): Json<Payment>,
 ) -> StatusCode {
-    payload.timestamp = Utc::now();
-
     match serde_json::to_string(&payload) {
         Ok(payment_json) => {
             let key = format!("payment:{}", payload.correlation_id);
 
-            match connection
-                .set::<String, String, ()>(key, payment_json)
-                .await
-            {
+            match redis.set::<String, String, ()>(key, payment_json).await {
                 Ok(_) => {
                     println!("Payment salvo no Redis com sucesso");
                     StatusCode::CREATED
@@ -69,7 +64,7 @@ pub async fn purge_payments() -> StatusCode {
 }
 
 pub async fn get_summary(
-    Extension(mut connection): Extension<MultiplexedConnection>,
+    Extension(mut redis): Extension<MultiplexedConnection>,
     Query(params): Query<SummaryQuery>,
 ) -> Result<Json<SummaryResponse>, StatusCode> {
     let from_date = match DateTime::parse_from_rfc3339(&params.from) {
@@ -88,13 +83,13 @@ pub async fn get_summary(
         }
     };
 
-    match connection.keys::<&str, Vec<String>>("payment:*").await {
+    match redis.keys::<&str, Vec<String>>("payment:*").await {
         Ok(keys) => {
             let mut total_requests = 0u32;
             let mut total_amount = 0.0f64;
 
             for key in keys {
-                match connection.get::<String, String>(key).await {
+                match redis.get::<String, String>(key).await {
                     Ok(payment_json) => match serde_json::from_str::<Payment>(&payment_json) {
                         Ok(payment) => {
                             if payment.timestamp >= from_date && payment.timestamp <= to_date {
