@@ -5,7 +5,9 @@ mod routes;
 
 #[tokio::main]
 async fn main() {
-    let client = redis::Client::open("redis://localhost:6379").unwrap();
+    let redis_url =
+        std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://localhost:6379".to_string());
+    let client = redis::Client::open(redis_url).unwrap();
 
     let connection = client
         .get_multiplexed_async_connection()
@@ -23,6 +25,6 @@ async fn main() {
         }
     });
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:9999").await.unwrap();
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
