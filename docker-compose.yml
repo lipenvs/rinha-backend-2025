@@ -56,24 +56,8 @@ services:
           memory: "120MB"
 
   api-2:
-    build: .
+    <<: *api
     container_name: api-2
-    depends_on:
-      redis:
-        condition: service_healthy
-    environment:
-      - REDIS_URL=redis://redis:6379
-      - PAYMENT_PROCESSOR_DEFAULT_URL=http://payment-processor-default:8080
-      - PAYMENT_PROCESSOR_FALLBACK_URL=http://payment-processor-fallback:8080
-    restart: unless-stopped
-    networks:
-      - backend
-      - payment-processor
-    deploy:
-      resources:
-        limits:
-          cpus: "0.5"
-          memory: "120MB"
 
 volumes:
   redis-data:

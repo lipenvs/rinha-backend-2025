@@ -17,8 +17,10 @@ pub struct Payment {
 
 #[derive(Deserialize)]
 pub struct SummaryQuery {
-    from: String,
-    to: String,
+    #[serde(default)]
+    from: Option<String>,
+    #[serde(default)]
+    to: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -254,7 +256,12 @@ pub async fn get_summary(
     Extension(mut redis): Extension<MultiplexedConnection>,
     Query(params): Query<SummaryQuery>,
 ) -> Result<Json<SummaryResponse>, StatusCode> {
-    let _from_date = match DateTime::parse_from_rfc3339(&params.from) {
+    let from_str = params
+        .from
+        .unwrap_or_else(|| "1970-01-01T00:00:00Z".to_string());
+    let to_str = params.to.unwrap_or_else(|| Utc::now().to_rfc3339());
+
+    let _from_date = match DateTime::parse_from_rfc3339(&from_str) {
         Ok(dt) => dt.with_timezone(&Utc),
         Err(e) => {
             eprintln!("Erro ao parsear data 'from': {}", e);
@@ -262,7 +269,7 @@ pub async fn get_summary(
         }
     };
 
-    let _to_date = match DateTime::parse_from_rfc3339(&params.to) {
+    let _to_date = match DateTime::parse_from_rfc3339(&to_str) {
         Ok(dt) => dt.with_timezone(&Utc),
         Err(e) => {
             eprintln!("Erro ao parsear data 'to': {}", e);
