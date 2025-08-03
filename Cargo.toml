@@ -11,3 +11,4 @@ serde_json = "1.0"
 tokio = { version = "1.47.1", features = ["full"] }
 uuid = { version = "1.0", features = ["v4", "serde"] }
 redis = { version = "0.32.4", features = ["tokio-comp"] }
+reqwest = { version = "0.12.22", features = ["json"] }

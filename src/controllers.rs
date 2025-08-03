@@ -21,32 +21,34 @@ pub struct SummaryQuery {
 }
 
 #[derive(Serialize)]
-pub struct SummaryResponse {
+pub struct SummaryData {
     #[serde(rename = "totalRequests")]
     total_requests: u32,
     #[serde(rename = "totalAmount")]
     total_amount: f64,
-    #[serde(rename = "totalFee")]
-    total_fee: f64,
-    #[serde(rename = "feePerTransaction")]
-    fee_per_transaction: f64,
 }
 
-pub async fn new_payment(
+#[derive(Serialize)]
+pub struct SummaryResponse {
+    default: SummaryData,
+    fallback: SummaryData,
+}
+
+pub async fn save_payment(
     Extension(mut redis): Extension<MultiplexedConnection>,
     Json(payload): Json<Payment>,
 ) -> StatusCode {
     match serde_json::to_string(&payload) {
         Ok(payment_json) => {
-            let key = format!("payment:{}", payload.correlation_id);
+            let key = format!("queue:{}", payload.correlation_id);
 
             match redis.set::<String, String, ()>(key, payment_json).await {
                 Ok(_) => {
-                    println!("Payment salvo no Redis com sucesso");
+                    println!("Payment {} adicionado a fila", payload.correlation_id);
                     StatusCode::CREATED
                 }
                 Err(e) => {
-                    eprintln!("Erro ao salvar payment no Redis: {}", e);
+                    eprintln!("Erro ao adicionar payment na fila: {}", e);
                     StatusCode::INTERNAL_SERVER_ERROR
                 }
             }
@@ -58,8 +60,92 @@ pub async fn new_payment(
     }
 }
 
-pub async fn purge_payments() -> StatusCode {
-    println!("POST /purge-payments - Limpeza de pagamentos executada");
+pub async fn new_payments(mut redis: MultiplexedConnection) {
+    match redis.keys::<&str, Vec<String>>("queue:*").await {
+        Ok(keys) if keys.is_empty() => {
+            return;
+        }
+        Ok(keys) => {
+            for key in keys {
+                match redis.get::<&str, String>(&key).await {
+                    Ok(payment_json) => match serde_json::from_str::<Payment>(&payment_json) {
+                        Ok(payment) => {
+                            let external_payload = serde_json::json!({
+                                "correlationId": payment.correlation_id,
+                                "amount": payment.amount,
+                                "requestedAt": payment.timestamp.to_rfc3339()
+                            });
+
+                            let client = reqwest::Client::new();
+                            match client
+                                .post("http://localhost:8001/payments")
+                                .header("Content-Type", "application/json")
+                                .json(&external_payload)
+                                .send()
+                                .await
+                            {
+                                Ok(response) if response.status().is_success() => {
+                                    let payment_key = key.replace("queue:", "payment:");
+
+                                    match redis
+                                        .set::<String, String, ()>(payment_key, payment_json)
+                                        .await
+                                    {
+                                        Ok(_) => match redis.del::<&str, ()>(&key).await {
+                                            Ok(_) => {
+                                                println!(
+                                                    "Payment {} processado com sucesso",
+                                                    payment.correlation_id
+                                                );
+                                            }
+                                            Err(e) => {
+                                                eprintln!(
+                                                    "Erro ao remover da queue {}: {}",
+                                                    key, e
+                                                );
+                                            }
+                                        },
+                                        Err(e) => {
+                                            eprintln!("Erro ao salvar payment {}", e);
+                                        }
+                                    }
+                                }
+                                Ok(response) => {
+                                    eprintln!(
+                                        "Erro do serviço externo para {}: {}",
+                                        payment.correlation_id,
+                                        response.status()
+                                    );
+                                }
+                                Err(e) => {
+                                    eprintln!(
+                                        "Erro na requisição HTTP para {}: {}",
+                                        payment.correlation_id, e
+                                    );
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("Erro ao deserializar payment da queue {}: {}", key, e);
+                        }
+                    },
+                    Err(e) => {
+                        eprintln!("Erro ao buscar payment da queue {}: {}", key, e);
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("Erro ao buscar keys da queue: {}", e);
+        }
+    }
+}
+
+pub async fn purge_payments(Extension(mut redis): Extension<MultiplexedConnection>) -> StatusCode {
+    if let Err(e) = redis.flushdb::<()>().await {
+        eprintln!("Erro ao limpar banco de dados Redis: {}", e);
+        return StatusCode::INTERNAL_SERVER_ERROR;
+    }
     StatusCode::OK
 }
 
@@ -107,14 +193,15 @@ pub async fn get_summary(
                 }
             }
 
-            let fee_per_transaction = 0.05f64;
-            let total_fee = total_requests as f64 * fee_per_transaction;
-
             let response = SummaryResponse {
-                total_requests,
-                total_amount,
-                total_fee,
-                fee_per_transaction,
+                default: SummaryData {
+                    total_requests,
+                    total_amount,
+                },
+                fallback: SummaryData {
+                    total_requests: 0,
+                    total_amount: 0.0,
+                },
             };
 
             Ok(Json(response))
